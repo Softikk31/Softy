@@ -4,7 +4,6 @@ from speech_recognition import UnknownValueError
 def voice_init() -> str:
     try:
         sr = speech_recognition.Recognizer()
-        sr.pause_threshold = 0.5
         with speech_recognition.Microphone() as mic:
             sr.adjust_for_ambient_noise(source=mic)
             audio = sr.listen(source=mic, timeout=None)
