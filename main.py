@@ -7,10 +7,11 @@ from ollama import Message
 from sqlalchemy import select, desc
 from sqlalchemy.orm import Session
 
-from audio_detecter import audio
+from audio import audio_run
 from config import MY_TIME_ZONE, AUTHOR, LLM_MODEL, engine, client, LOGO
 from database import MessageEntity, init_db, ChatEventEntity
 from memory_llm import memory_llm
+from voice import voice_init
 
 init(autoreset=True)
 
@@ -39,12 +40,13 @@ def startup():
 {Fore.BLUE + 'Started'}: {Fore.RESET + datetime_converter(now.hour)}:{datetime_converter(now.minute)} {datetime_converter(now.day)}.{datetime_converter(now.month)}.{datetime_converter(now.year)}
     ''')
 
+
 async def main():
     startup()
     await init_db()
     with Session(engine) as session:
         while True:
-            message = input("Input: ")
+            message = voice_init()
             await new_message(session, 'user', message)
 
             messages_query = select(MessageEntity).order_by(desc(MessageEntity.created_at)).limit(5)
@@ -65,7 +67,8 @@ async def main():
             print('Output: ')
             output_ai = list()
 
-            memory_result = select(ChatEventEntity)
+            memory_result = select(ChatEventEntity).order_by(desc(ChatEventEntity.importance),
+                                                             desc(ChatEventEntity.created_at)).limit(15)
 
             memory = session.scalars(memory_result).all()
             memory_text: list[str] = list(map(
@@ -93,20 +96,19 @@ async def main():
                 ),
                 *_messages
             ]
-            text = ''
             for chunk in client.chat(LLM_MODEL, messages=messages, think=False, stream=True):
                 content = chunk['message']['content']
                 print(Fore.MAGENTA + content + Fore.RESET, end='', flush=True)
-                text += content
-                if text:
-                    if text[-1] in ['.', '?', '!']:
-                        await audio(text)
-                        text = ''
                 output_ai.append(content)
             message = ''.join(output_ai)
+            if message != '':
+                audio_run(message)
             create_task(new_message(session, 'assistant', message))
             print()
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+try:
+    if __name__ == "__main__":
+        asyncio.run(main())
+except Exception as _:
+    pass

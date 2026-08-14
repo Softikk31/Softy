@@ -1,6 +1,7 @@
 import os
 from zoneinfo import ZoneInfo
 
+import torch
 from dotenv import load_dotenv
 from ollama import Client
 from sqlalchemy import create_engine
@@ -27,3 +28,10 @@ LOGO = '''
 ▐█▄▪▐█▐█▌.▐▌██▌. ▐█▌· ▐█▀·.
  ▀▀▀▀  ▀█▄▀▪▀▀▀  ▀▀▀   ▀ • 
  '''
+
+language = 'ru'
+model_id = 'v5_ru'
+sample_rate = 48000
+speaker = 'baya'
+device = torch.device('cpu')
+text = 'Я твоя аниме тян, НЯАААААА'

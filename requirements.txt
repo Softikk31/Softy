@@ -1,0 +1,8 @@
+colorama
+ollama
+sqlalchemy
+python-dotenv
+pydantic
+silero
+sounddevice
+speechrecognition
