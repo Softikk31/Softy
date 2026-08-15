@@ -6,3 +6,5 @@ pydantic
 silero
 sounddevice
 speechrecognition
+transliterate
+num2words
