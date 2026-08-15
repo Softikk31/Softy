@@ -10,7 +10,7 @@ from audio import audio_run
 from config import MY_TIME_ZONE, AUTHOR, LLM_MODEL, client, LOGO
 from data.database import Database
 from data.entities import MessageEntity, ChatEventEntity
-from mappers import message_entity_to_ollama_message, memory_entities_to_json_memory, ollama_message_to_json_message
+from mappers import message_entity_to_ollama_message, memory_entities_to_json_memory
 from memory_llm import memory_llm
 from voice import voice_init
 
