@@ -22,6 +22,7 @@ class WorkMode(Enum):
     TEXT = 1
     VOICE = 2
 
+work_mode = WorkMode.VOICE
 
 with open('resources/main_llm_prompt.txt', 'r') as file:
     prompt = file.read()
@@ -39,6 +40,93 @@ def startup():
 {Fore.BLUE + 'Started'}: {Fore.RESET + datetime_converter(now.hour)}:{datetime_converter(now.minute)} {datetime_converter(now.day)}.{datetime_converter(now.month)}.{datetime_converter(now.year)}
     ''')
 
+def replace_work_mode(mode: int):
+    """
+    Изменяет мод общения
+    Если mode равен:
+    1 - текстовый
+    2 - голосовой
+    :param mode:
+    :return:
+    """
+    global work_mode
+    match mode:
+        case WorkMode.TEXT.value:
+            work_mode = WorkMode.TEXT
+        case WorkMode.VOICE.value:
+            work_mode = WorkMode.VOICE
+
+async def run_bot(messages_result, chat_event_entity, message_entity):
+    messages = []
+    output_ai = []
+    memory_entity = await chat_event_entity.get_latest_memory()
+    memory_json = memory_entities_to_json_memory(reversed(memory_entity))
+
+    print('Output: ')
+    messages.append(
+        Message(
+            role="system",
+            content=f"""
+## PROMPT
+{prompt}
+
+## MEMORY
+{memory_json}
+
+## INFO
+time: {datetime.now(MY_TIME_ZONE)}
+
+## TELEGRAM USER INFO
+{await get_me()}
+    """
+        )
+    )
+
+    for message in reversed(messages_result):
+        messages.append(message)
+
+    while True:
+        response = client.chat(LLM_MODEL, messages=messages, think=False, stream=True, tools=[get_dialogs, send_message, replace_work_mode])
+        tool_called = False
+        for chunk in response:
+            content = chunk['message']['content']
+            print(Fore.MAGENTA + content + Fore.RESET, end='', flush=True)
+            output_ai.append(content)
+
+            if chunk.message.tool_calls:
+                tool_called = True
+
+                messages.append(chunk.message)
+                for tool in chunk.message.tool_calls:
+                    if tool.function.name == 'send_message':
+                        args = tool.function.arguments
+                        await send_message(**args)
+                        messages.append(
+                            Message(
+                                role="tool",
+                                content=f'Сообщение успешно отправлено'
+                            )
+                        )
+                    if tool.function.name == 'get_dialogs':
+                        dialogs: list[DialogInfo] = await get_dialogs()
+                        messages.append(
+                            Message(
+                                role="tool",
+                                content=f'{dialogs}'
+                            )
+                        )
+                    if tool.function.name == 'replace_work_mode':
+                        args = tool.function.arguments
+                        replace_work_mode(**args)
+
+        message = ''.join(output_ai)
+        if message != '':
+            audio_run(message)
+        create_task(message_entity.new_message('assistant', message))
+        print()
+
+        if not tool_called:
+            break
 
 async def main():
     startup()
@@ -48,23 +136,13 @@ async def main():
 
     await database.init_db()
 
-    work_mode = int(input('''
-Work mode:
-1. Text
-2. Voice
-
-Input: '''))
-
-    messages = []
     while True:
         message: str
         match work_mode:
-            case WorkMode.TEXT.value:
+            case WorkMode.TEXT:
                 message = input('Input: ')
-            case WorkMode.VOICE.value:
+            case WorkMode.VOICE:
                 message = voice_init()
-            case _:
-                message = input('Input: ')
         await message_entity.new_message('user', message)
 
         messages_entity = await message_entity.get_latest_messages()
@@ -72,68 +150,9 @@ Input: '''))
 
         asyncio.create_task(memory_llm(messages_result))
 
-        print('Output: ')
-        output_ai = list()
+        await run_bot(messages_result, chat_event_entity, message_entity)
 
-        memory_entity = await chat_event_entity.get_latest_memory()
-        memory_json = memory_entities_to_json_memory(reversed(memory_entity))
 
-        messages.append(
-            Message(
-                role="system",
-                content=f"""
-    ## PROMPT
-    {prompt}
-    
-    ## MEMORY
-    {memory_json}
-    
-    ## INFO
-    time: {datetime.now(MY_TIME_ZONE)}
-    
-    ## TELEGRAM INFO
-    {await get_me()}
-    
-    """
-            )
-        )
-
-        for message in reversed(messages_result):
-            messages.append(message)
-
-        while True:
-            response = client.chat(LLM_MODEL, messages=messages, think=False, stream=True, tools=[get_dialogs, send_message])
-            tool_called = False
-            for chunk in response:
-                content = chunk['message']['content']
-                print(Fore.MAGENTA + content + Fore.RESET, end='', flush=True)
-                output_ai.append(content)
-
-                if chunk.message.tool_calls:
-                    tool_called = True
-
-                    messages.append(chunk.message)
-                    for tool in chunk.message.tool_calls:
-                        if tool.function.name == 'send_message':
-                            args = tool.function.arguments
-                            await send_message(**args)
-                        if tool.function.name == 'get_dialogs':
-                            dialogs: list[DialogInfo] = await get_dialogs()
-                            messages.append(
-                                Message(
-                                    role="assistant",
-                                    content=f'{dialogs}'
-                                )
-                            )
-
-            message = ''.join(output_ai)
-            if message != '':
-                audio_run(message)
-            create_task(message_entity.new_message('assistant', message))
-            print()
-
-            if not tool_called:
-                break
 
 # try:
 if __name__ == "__main__":
