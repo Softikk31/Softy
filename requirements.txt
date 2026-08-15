@@ -8,3 +8,4 @@ sounddevice
 speechrecognition
 transliterate
 num2words
+telethon
