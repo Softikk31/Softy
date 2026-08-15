@@ -10,8 +10,9 @@ from audio import audio_run
 from config import MY_TIME_ZONE, AUTHOR, LLM_MODEL, client, LOGO
 from data.database import Database
 from data.entities import MessageEntity, ChatEventEntity
-from mappers import message_entity_to_ollama_message, memory_entities_to_json_memory, ollama_message_to_json_message
+from mappers import message_entity_to_ollama_message, memory_entities_to_json_memory
 from memory_llm import memory_llm
+from telegram.main import get_me, send_message, get_dialogs, DialogInfo
 from voice import voice_init
 
 init(autoreset=True)
@@ -44,7 +45,9 @@ async def main():
     database = Database()
     message_entity = MessageEntity()
     chat_event_entity = ChatEventEntity()
+
     await database.init_db()
+
     work_mode = int(input('''
 Work mode:
 1. Text
@@ -52,6 +55,7 @@ Work mode:
 
 Input: '''))
 
+    messages = []
     while True:
         message: str
         match work_mode:
@@ -74,35 +78,65 @@ Input: '''))
         memory_entity = await chat_event_entity.get_latest_memory()
         memory_json = memory_entities_to_json_memory(reversed(memory_entity))
 
-        messages = [
+        messages.append(
             Message(
                 role="system",
                 content=f"""
-## PROMPT
-{prompt}
+    ## PROMPT
+    {prompt}
+    
+    ## MEMORY
+    {memory_json}
+    
+    ## INFO
+    time: {datetime.now(MY_TIME_ZONE)}
+    
+    ## TELEGRAM INFO
+    {await get_me()}
+    
+    """
+            )
+        )
 
-## MEMORY
-{memory_json}
+        for message in reversed(messages_result):
+            messages.append(message)
 
-## INFO
-time: {datetime.now(MY_TIME_ZONE)}
-"""
-            ),
-            *reversed(messages_result)
-        ]
-        for chunk in client.chat(LLM_MODEL, messages=messages, think=False, stream=True):
-            content = chunk['message']['content']
-            print(Fore.MAGENTA + content + Fore.RESET, end='', flush=True)
-            output_ai.append(content)
-        message = ''.join(output_ai)
-        if message != '':
-            audio_run(message)
-        create_task(message_entity.new_message('assistant', message))
-        print()
+        while True:
+            response = client.chat(LLM_MODEL, messages=messages, think=False, stream=True, tools=[get_dialogs, send_message])
+            tool_called = False
+            for chunk in response:
+                content = chunk['message']['content']
+                print(Fore.MAGENTA + content + Fore.RESET, end='', flush=True)
+                output_ai.append(content)
 
+                if chunk.message.tool_calls:
+                    tool_called = True
 
-try:
-    if __name__ == "__main__":
-        asyncio.run(main())
-except Exception as _:
-    pass
+                    messages.append(chunk.message)
+                    for tool in chunk.message.tool_calls:
+                        if tool.function.name == 'send_message':
+                            args = tool.function.arguments
+                            await send_message(**args)
+                        if tool.function.name == 'get_dialogs':
+                            dialogs: list[DialogInfo] = await get_dialogs()
+                            messages.append(
+                                Message(
+                                    role="assistant",
+                                    content=f'{dialogs}'
+                                )
+                            )
+
+            message = ''.join(output_ai)
+            if message != '':
+                audio_run(message)
+            create_task(message_entity.new_message('assistant', message))
+            print()
+
+            if not tool_called:
+                break
+
+# try:
+if __name__ == "__main__":
+    asyncio.run(main())
+# except Exception as _:
+#     pass
