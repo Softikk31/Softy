@@ -44,7 +44,16 @@ async def memory_llm(messages: list[Message]):
 '''
         }
     ], think=False, format=ChatEventResponse.model_json_schema())
-    events = ChatEventResponse.model_validate_json(response['message']['content']).events
+    raw_content = response['message']['content'].strip()
+    if raw_content.startswith("```json"):
+        raw_content = raw_content[7:]
+    elif raw_content.startswith("```"):
+        raw_content = raw_content[3:]
+    if raw_content.endswith("```"):
+        raw_content = raw_content[:-3]
+    raw_content = raw_content.strip()
+
+    events = ChatEventResponse.model_validate_json(raw_content).events
 
     for event in events:
         await chat_event_entity.new_memory(

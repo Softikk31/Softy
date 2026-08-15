@@ -37,7 +37,7 @@ class MessageEntity(Base):
             messages_result = (await session.scalars(
                 messages_query
             )).all()
-            return list(reversed(messages_result))
+            return list(messages_result)
 
 
 class ChatEventEntity(Base):
@@ -66,7 +66,7 @@ class ChatEventEntity(Base):
         async with async_session_maker() as session:
             memory_result = select(ChatEventEntity)
             memory = (await session.scalars(memory_result)).all()
-            return list(reversed(memory))
+            return list(memory)
 
     @staticmethod
     async def get_latest_memory():
@@ -74,4 +74,4 @@ class ChatEventEntity(Base):
             memory_result = select(ChatEventEntity).order_by(desc(ChatEventEntity.importance),
                                                              desc(ChatEventEntity.created_at)).limit(15)
 
-            return list(reversed((await session.scalars(memory_result)).all()))
+            return list((await session.scalars(memory_result)).all())
